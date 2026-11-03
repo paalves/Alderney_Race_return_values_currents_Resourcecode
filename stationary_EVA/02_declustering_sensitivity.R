@@ -11,11 +11,16 @@ library(viridis)
 source(.path_helper[file.exists(.path_helper)][1])
 rm(.path_helper)
 
-data <- fread(data_file())
+source(file.path(project_root(), "importation", "02_read_rscd_2026.R"))
+source(file.path(project_root(), "stationary_EVA", "00_stationary_helpers.R"))
+data <- read_rscd_2026()
 
-hs <- na.omit(data$hs)
-chosen_threshold <- quantile(hs, 0.96)
+response_variable <- get0("response_variable", ifnotfound = "hs", inherits = TRUE)
+response_info <- stationary_response_info(data, response_variable)
+response_values <- response_info$values
+chosen_threshold <- as.numeric(quantile(response_values, 0.96))
 
+#' Runs declustering: number of clusters and their indices.
 decluster_runs <- function(x, threshold, run_length) {
   exceed <- x > threshold
   if (sum(exceed) == 0) return(list(n_clusters = 0, cluster_indices = integer(0)))
@@ -33,27 +38,34 @@ decluster_runs <- function(x, threshold, run_length) {
   list(n_clusters = length(cluster_indices), cluster_indices = cluster_indices)
 }
 
-thresholds <- quantile(hs, probs = seq(0.90, 0.995, by = 0.01))
+thresholds <- as.numeric(quantile(
+  response_values,
+  probs = seq(0.90, 0.995, by = 0.01)
+))
 run_lengths <- c(12, 24, 48, 72, 96, 120)
 cluster_results <- data.frame()
 
 for (u in thresholds) {
-  n_exceedances <- sum(hs > u)
+  n_exceedances <- sum(response_values > u)
   
   for (r in run_lengths) {
-    clusters <- decluster_runs(hs, threshold = u, run_length = r)
+    clusters <- decluster_runs(response_values, threshold = u, run_length = r)
     n_events <- clusters$n_clusters
     
     if (n_events >= 50 && n_exceedances > 0) {
-      cluster_maxima <- hs[clusters$cluster_indices]
+      cluster_maxima <- response_values[clusters$cluster_indices]
       
-      fit <- fpot(cluster_maxima, threshold = u, model = "gpd")
+      fit <- fit_stationary_gpd(cluster_maxima, threshold = u)
+
+      has_se <- !is.null(fit$std.err) &&
+        all(c("shape", "scale") %in% names(fit$std.err))
 
       cluster_results <- rbind(cluster_results, data.frame(
         threshold = u, run_length = r, n_exceedances = n_exceedances,
         n_clusters = n_events, cluster_ratio = n_events / n_exceedances,
         shape = fit$param["shape"], scale = fit$param["scale"],
-        shape_se = fit$std.err["shape"], scale_se = fit$std.err["scale"]
+        shape_se = if (has_se) fit$std.err["shape"] else NA_real_,
+        scale_se = if (has_se) fit$std.err["scale"] else NA_real_
       ))
     }
   }
@@ -62,7 +74,6 @@ for (u in thresholds) {
 plot_theme <- theme_bw(base_size = 14) +
   theme(
     plot.title = element_text(face = "bold", size = 18),
-    plot.subtitle = element_text(size = 12),
     axis.title = element_text(size = 14),
     axis.text = element_text(size = 10),
     legend.title = element_text(size = 12),
@@ -76,11 +87,11 @@ p1 <- ggplot(cluster_results, aes(x = threshold, y = n_clusters,
   geom_point(size = 2) +
   geom_vline(xintercept = chosen_threshold, linetype = "dashed", color = "blue", linewidth = 1) +
   annotate("text", x = chosen_threshold, y = max(cluster_results$n_clusters), 
-           label = sprintf("Q96 = %.2f m", chosen_threshold), hjust = -0.1, size = 6, fontface="bold", color = "blue") +
+           label = stationary_threshold_label(chosen_threshold, response_info),
+           hjust = -0.1, size = 6, fontface="bold", color = "blue") +
   scale_color_viridis_d(name = "Run length\n(hours)") +
   labs(title = "Number of independent storm events",
-       subtitle = "Effect of threshold and run length on identified clusters",
-       x = expression(paste("Threshold ", italic(u), " (m)")),
+       x = stationary_axis_label("Threshold u", response_info),
        y = "Number of independent events") +
   plot_theme
 
@@ -90,11 +101,11 @@ p2 <- ggplot(cluster_results, aes(x = threshold, y = cluster_ratio,
   geom_point(size = 2) +
   geom_vline(xintercept = chosen_threshold, linetype = "dashed", color = "blue", linewidth = 1) +
   annotate("text", x = chosen_threshold, y = max(cluster_results$cluster_ratio), 
-           label = sprintf("Q96 = %.2f m", chosen_threshold), hjust = -0.1, size = 6, fontface="bold", color = "blue") +
+           label = stationary_threshold_label(chosen_threshold, response_info),
+           hjust = -0.1, size = 6, fontface="bold", color = "blue") +
   scale_color_viridis_d(name = "Run length\n(hours)") +
   labs(title = "Extremal index change",
-       subtitle = "Ratio of independent events to total exceedances",
-       x = expression(paste("Threshold ", italic(u), " (m)")),
+       x = stationary_axis_label("Threshold u", response_info),
        y = "Extremal index (theta)") +
   plot_theme
 
@@ -108,12 +119,12 @@ p3 <- ggplot(cluster_results, aes(x = threshold, y = shape,
   geom_vline(xintercept = chosen_threshold, linetype = "dashed", color = "blue", linewidth = 1) +
   annotate("text", x = chosen_threshold, 
            y = max(cluster_results$shape + 1.96 * cluster_results$shape_se, na.rm = TRUE), 
-           label = sprintf("Q96 = %.2f m", chosen_threshold), hjust = -0.1, size = 6, fontface="bold", color = "blue") +
+           label = stationary_threshold_label(chosen_threshold, response_info),
+           hjust = -0.1, size = 6, fontface="bold", color = "blue") +
   scale_color_viridis_d(name = "Run length\n(hours)") +
   scale_fill_viridis_d(name = "Run length\n(hours)") +
   labs(title = "Shape parameter stability",
-       subtitle = "Effect of run length on GPD shape parameter estimates",
-       x = expression(paste("Threshold ", italic(u), " (m)")),
+       x = stationary_axis_label("Threshold u", response_info),
        y = expression(paste("Shape parameter ", xi))) +
   plot_theme
 
@@ -126,15 +137,43 @@ p4 <- ggplot(cluster_results, aes(x = threshold, y = scale,
   geom_vline(xintercept = chosen_threshold, linetype = "dashed", color = "blue", linewidth = 1) +
   annotate("text", x = chosen_threshold, 
            y = max(cluster_results$scale + 1.96 * cluster_results$scale_se, na.rm = TRUE), 
-           label = sprintf("Q96 = %.2f m", chosen_threshold), hjust = -0.1, size = 6, fontface="bold", color = "blue") +
+           label = stationary_threshold_label(chosen_threshold, response_info),
+           hjust = -0.1, size = 6, fontface="bold", color = "blue") +
   scale_color_viridis_d(name = "Run length\n(hours)") +
   scale_fill_viridis_d(name = "Run length\n(hours)") +
   labs(title = "Scale parameter stability",
-       subtitle = "Effect of run length on GPD scale parameter estimates",
-       x = expression(paste("Threshold ", italic(u), " (m)")),
+       x = stationary_axis_label("Threshold u", response_info),
        y = expression(paste("Scale parameter ", sigma))) +
   plot_theme
 
-grid.arrange(p1, p2, p3, p4, nrow = 2, ncol = 2,
-             top = textGrob("Declustering sensitivity analysis", 
-                            gp = gpar(fontsize = 20, fontface = "bold")))
+p1 <- p1 + labs(tag = "(a)")
+p2 <- p2 + labs(tag = "(b)")
+p3 <- p3 + labs(tag = "(c)")
+p4 <- p4 + labs(tag = "(d)")
+
+declustering_sensitivity_plot <- arrangeGrob(
+  p1, p2, p3, p4,
+  nrow = 2,
+  ncol = 2,
+  top = textGrob(
+    paste("Declustering sensitivity analysis for", response_info$label),
+    gp = gpar(fontsize = 20, fontface = "bold")
+  )
+)
+
+declustering_figure_file <- stationary_figure_file(
+  response_info,
+  "declustering_sensitivity.png"
+)
+
+ggsave(
+  declustering_figure_file,
+  declustering_sensitivity_plot,
+  width = 13,
+  height = 9,
+  dpi = 300,
+  bg = "white"
+)
+
+grid.newpage()
+grid.draw(declustering_sensitivity_plot)

@@ -1,284 +1,196 @@
 library(ggplot2)
 library(patchwork)
-library(evd)
 
-col_gpd <- "#2166AC"
-col_gev <- "#D6604D"
+.path_helper <- c("paths.R", "../paths.R", "../../paths.R")
+source(.path_helper[file.exists(.path_helper)][1])
+rm(.path_helper)
 
-excesses <- excesses[excesses > 0]
+source(file.path(project_root(), "stationary_EVA", "00_stationary_helpers.R"))
 
-theme_rv <- function() {
-  theme_bw(base_size = 14) +
-    theme(
-      plot.title = element_text(face = "bold", size = 16, margin = margin(b = 4)),
-      plot.subtitle = element_text(size = 12, color = "grey40", margin = margin(b = 8)),
-      axis.title = element_text(size = 13),
-      axis.text = element_text(size = 12),
-      panel.grid.minor = element_blank(),
-      panel.grid.major = element_line(color = "grey90"),
-      panel.border = element_rect(color = "grey70"),
-      legend.position = "none",
-      plot.margin = margin(10, 20, 8, 8)
-    )
+response_variable <- get0("response_variable", ifnotfound = "hs", inherits = TRUE)
+fit_is_missing_or_stale <-
+  !exists("fit_declust", inherits = FALSE) ||
+  !exists("stationary_fitted_response", inherits = FALSE) ||
+  !identical(tolower(stationary_fitted_response), tolower(response_variable))
+
+if (fit_is_missing_or_stale) {
+  source(file.path(project_root(), "stationary_EVA", "03_analysis.R"))
 }
 
-theme_diag <- function() {
-  theme_bw(base_size = 13) +
-    theme(
-      plot.title = element_text(face = "bold", size = 14),
-      plot.subtitle = element_text(size = 11, color = "grey40"),
-      axis.title = element_text(size = 12),
-      axis.text = element_text(size = 11),
-      panel.grid.minor = element_blank(),
-      panel.grid.major = element_line(color = "grey92")
-    )
+#' Quantile function of the generalized Pareto distribution.
+gpd_quantile <- function(probability, scale, shape) {
+  if (abs(shape) < 1e-6) {
+    -scale * log(1 - probability)
+  } else {
+    (scale / shape) * ((1 - probability)^(-shape) - 1)
+  }
 }
 
-n_c <- length(cluster_maxima)
-clust_df <- data.frame(
-  period = sort((n_c + 1) / (n_c + 1 - rank(cluster_maxima))) / lambda_declust,
-  level = sort(cluster_maxima)
-)
+#' Density of the generalized Pareto distribution.
+gpd_density <- function(x, scale, shape) {
+  if (abs(shape) < 1e-6) {
+    return(exp(-x / scale) / scale)
+  }
 
-n_b <- length(block_maxima)
-bm_df <- data.frame(
-  period = 1 / (1 - ((rank(block_maxima) - 0.44) / (n_b + 0.12))) / blocks_per_year,
-  level = sort(block_maxima)
-)
-
-y_min <- floor(min(clust_df$level, bm_df$level) * 10) / 10
-y_max <- ceiling(max(max(rv_declust$upper), quantile(rv_gev$upper, 0.85)) * 10) / 10
-
-p_clean <- ggplot() +
-  geom_ribbon(
-    data = rv_gev,
-    aes(x = period, ymin = pmax(lower, y_min), ymax = pmin(upper, y_max + 1)),
-    fill = col_gev,
-    alpha = 0.13
-  ) +
-  geom_ribbon(
-    data = rv_declust,
-    aes(x = period, ymin = lower, ymax = upper),
-    fill = col_gpd,
-    alpha = 0.18
-  ) +
-  geom_hline(yintercept = hs_ref, linetype = "dotted", color = "grey20", linewidth = 0.7) +
-  geom_segment(
-    aes(x = T_gev_ref, xend = T_gev_ref, y = y_min, yend = hs_ref),
-    linetype = "dotted",
-    color = col_gev,
-    linewidth = 0.7
-  ) +
-  geom_segment(
-    aes(x = T_declust_ref, xend = T_declust_ref, y = y_min, yend = hs_ref),
-    linetype = "dotted",
-    color = col_gpd,
-    linewidth = 0.7
-  ) +
-  geom_line(data = rv_gev, aes(period, level), color = col_gev, linewidth = 1.2) +
-  geom_line(data = rv_declust, aes(period, level), color = col_gpd, linewidth = 1.2) +
-  geom_point(
-    data = rv_gev,
-    aes(period, level),
-    color = col_gev,
-    fill = "white",
-    shape = 21,
-    size = 3.2,
-    stroke = 1.5
-  ) +
-  geom_point(
-    data = rv_declust,
-    aes(period, level),
-    color = col_gpd,
-    fill = "white",
-    shape = 21,
-    size = 3.2,
-    stroke = 1.5
-  ) +
-  annotate(
-    "label",
-    x = T_gev_ref * 0.70,
-    y = hs_ref,
-    label = sprintf("T = %.0f y", T_gev_ref),
-    color = col_gev,
-    fill = "white",
-    label.size = 0.3,
-    size = 6,
-    fontface = "bold",
-    vjust = -0.55
-  ) +
-  annotate(
-    "label",
-    x = T_declust_ref * 0.95,
-    y = hs_ref,
-    label = sprintf("T = %.0f y", T_declust_ref),
-    color = col_gpd,
-    fill = "white",
-    label.size = 0.3,
-    size = 6,
-    fontface = "bold",
-    vjust = 2
-  ) +
-  annotate(
-    "text",
-    x = 1.05,
-    y = hs_ref,
-    label = sprintf("Hs = %.2f m", hs_ref),
-    hjust = 0,
-    vjust = -0.5,
-    size = 6,
-    color = "grey30"
-  ) +
-  annotate(
-    "text",
-    x = max(rv_gev$period) * 1.04,
-    y = tail(rv_gev$level, 1) + 0.30,
-    label = "GEV",
-    color = col_gev,
-    fontface = "bold",
-    size = 4.2,
-    hjust = 0
-  ) +
-  annotate(
-    "text",
-    x = max(rv_declust$period) * 1.04,
-    y = tail(rv_declust$level, 1) - 0.30,
-    label = "GPD",
-    color = col_gpd,
-    fontface = "bold",
-    size = 4.2,
-    hjust = 0
-  ) +
-  scale_x_log10(
-    breaks = c(1, 2, 5, 10, 20, 50, 100, 200),
-    labels = c("1", "2", "5", "10", "20", "50", "100", "200"),
-    expand = expansion(mult = c(0.02, 0.10))
-  ) +
-  coord_cartesian(ylim = c(y_min, y_max)) +
-  labs(
-    title = "Return level plot",
-    subtitle = sprintf("Shading = 95%% CI; max observed Hs = %.2f m", hs_ref),
-    x = "Return period (years)",
-    y = "Hs [m]"
-  ) +
-  theme_rv()
-
-gpd_quantiles <- function(probs, xi, sigma) {
-  if (abs(xi) < 1e-6) -sigma * log(1 - probs) else (sigma / xi) * ((1 - probs)^(-xi) - 1)
+  support <- 1 + shape * x / scale > 0
+  density <- rep(NA_real_, length(x))
+  density[support] <- (1 / scale) *
+    (1 + shape * x[support] / scale)^(-1 / shape - 1)
+  density
 }
 
-gev_quantiles <- function(probs, mu, sigma, xi) {
-  if (abs(xi) < 1e-6) mu - sigma * log(-log(probs)) else mu + (sigma / xi) * ((-log(probs))^(-xi) - 1)
+scale_est <- unname(fit_declust$param["scale"])
+shape_est <- unname(fit_declust$param["shape"])
+
+if (all(is.finite(fit_summary$lower[fit_summary$parameter == "shape"]))) {
+  gpd_subtitle <- bquote(
+    xi == .(sprintf("%.3f", shape_est)) ~ "[" ~
+      .(sprintf("%.3f", fit_summary$lower[fit_summary$parameter == "shape"])) ~ "," ~
+      .(sprintf("%.3f", fit_summary$upper[fit_summary$parameter == "shape"])) ~ "]" ~
+      "   " ~ sigma == .(sprintf("%.3f", scale_est)) ~ "[" ~
+      .(sprintf("%.3f", fit_summary$lower[fit_summary$parameter == "scale"])) ~ "," ~
+      .(sprintf("%.3f", fit_summary$upper[fit_summary$parameter == "scale"])) ~ "]"
+  )
+} else {
+  gpd_subtitle <- bquote(
+    xi == .(sprintf("%.3f", shape_est)) ~ "   " ~
+      sigma == .(sprintf("%.3f", scale_est)) ~
+      "   (standard errors unavailable)"
+  )
 }
 
-xi1 <- fit_declust$param["shape"]
-sigma1 <- fit_declust$param["scale"]
-xi1_lo <- xi1 - 1.96 * fit_declust$std.err["shape"]
-xi1_hi <- xi1 + 1.96 * fit_declust$std.err["shape"]
-s1_lo <- sigma1 - 1.96 * fit_declust$std.err["scale"]
-s1_hi <- sigma1 + 1.96 * fit_declust$std.err["scale"]
-
-mu_g <- fit_gev$estimate["loc"]
-sg <- fit_gev$estimate["scale"]
-xi_g <- fit_gev$estimate["shape"]
-xi_g_lo <- xi_g - 1.96 * fit_gev$std.err["shape"]
-xi_g_hi <- xi_g + 1.96 * fit_gev$std.err["shape"]
-sg_lo <- sg - 1.96 * fit_gev$std.err["scale"]
-sg_hi <- sg + 1.96 * fit_gev$std.err["scale"]
-mu_lo <- mu_g - 1.96 * fit_gev$std.err["loc"]
-mu_hi <- mu_g + 1.96 * fit_gev$std.err["loc"]
-
-n1 <- length(excesses)
-qq1 <- ggplot(
-  data.frame(
-    emp = sort(excesses),
-    th = gpd_quantiles((1:n1 - 0.5) / n1, xi1, sigma1)
-  ),
-  aes(th, emp)
-) +
-  geom_abline(slope = 1, intercept = 0, color = "grey60", linetype = "dashed") +
-  geom_point(color = col_gpd, size = 2.5, alpha = 0.7) +
-  labs(
-    title = "QQ - GPD (declustered)",
-    subtitle = sprintf("xi = %.3f [%.3f, %.3f]   sigma = %.3f [%.3f, %.3f]", xi1, xi1_lo, xi1_hi, sigma1, s1_lo, s1_hi),
-    x = "Theoretical quantiles",
-    y = "Sample quantiles"
-  ) +
-  theme_diag()
-
-n_g <- length(block_maxima)
-qq3 <- ggplot(
-  data.frame(
-    emp = sort(block_maxima),
-    th = gev_quantiles((1:n_g - 0.5) / n_g, mu_g, sg, xi_g)
-  ),
-  aes(th, emp)
-) +
-  geom_abline(slope = 1, intercept = 0, color = "grey60", linetype = "dashed") +
-  geom_point(color = col_gev, size = 2.5, alpha = 0.7) +
-  labs(
-    title = "QQ - GEV (monthly maxima)",
-    subtitle = sprintf(
-      "mu = %.3f [%.3f, %.3f]   sigma = %.3f [%.3f, %.3f]   xi = %.3f [%.3f, %.3f]",
-      mu_g, mu_lo, mu_hi, sg, sg_lo, sg_hi, xi_g, xi_g_lo, xi_g_hi
+plot_theme <- theme_minimal(base_size = 16) +
+  theme(
+    plot.title = element_text(face = "bold", size = 19, hjust = 0.5),
+    plot.subtitle = element_text(
+      face = "bold",
+      size = 16,
+      colour = "grey35",
+      hjust = 0.5
     ),
-    x = "Theoretical quantiles",
-    y = "Sample quantiles"
-  ) +
-  theme_diag()
-
-x1 <- seq(0, max(excesses), length.out = 300)
-dens1 <- (1 / sigma1) * (1 + xi1 * x1 / sigma1)^(-(1 / xi1 + 1))
-d1 <- ggplot() +
-  geom_histogram(
-    data = data.frame(x = excesses),
-    aes(x, after_stat(density)),
-    breaks = seq(min(excesses), max(excesses), length.out = 26),
-    fill = col_gpd,
-    alpha = 0.25,
-    color = "white"
-  ) +
-  geom_line(data = data.frame(x = x1, d = dens1), aes(x, d), color = col_gpd, linewidth = 1.2) +
-  labs(
-    title = "Density - GPD (declustered)",
-    subtitle = sprintf("xi = %.3f [%.3f, %.3f]   sigma = %.3f [%.3f, %.3f]", xi1, xi1_lo, xi1_hi, sigma1, s1_lo, s1_hi),
-    x = "Excess over threshold (m)",
-    y = "Density"
-  ) +
-  theme_diag()
-
-x_g <- seq(min(block_maxima), max(block_maxima), length.out = 300)
-d3 <- ggplot() +
-  geom_histogram(
-    data = data.frame(x = block_maxima),
-    aes(x, after_stat(density)),
-    breaks = seq(min(block_maxima), max(block_maxima), length.out = 26),
-    fill = col_gev,
-    alpha = 0.25,
-    color = "white"
-  ) +
-  geom_line(
-    data = data.frame(x = x_g, d = dgev(x_g, loc = mu_g, scale = sg, shape = xi_g)),
-    aes(x, d),
-    color = col_gev,
-    linewidth = 1.2
-  ) +
-  labs(
-    title = "Density - GEV (monthly maxima)",
-    subtitle = sprintf(
-      "mu = %.3f [%.3f, %.3f]   sigma = %.3f [%.3f, %.3f]   xi = %.3f [%.3f, %.3f]",
-      mu_g, mu_lo, mu_hi, sg, sg_lo, sg_hi, xi_g, xi_g_lo, xi_g_hi
-    ),
-    x = "Monthly block maximum (m)",
-    y = "Density"
-  ) +
-  theme_diag()
-
-p_diag <- (qq1 + qq3) / (d1 + d3) +
-  plot_annotation(
-    title = "Model diagnostics",
-    theme = theme(plot.title = element_text(face = "bold", size = 15))
+    axis.title = element_text(size = 15),
+    axis.text = element_text(size = 13),
+    panel.grid.major = element_line(colour = "grey85", linewidth = 0.4),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(5, 5, 5, 5)
   )
 
-p_diag
-p_clean
+qq_data <- data.frame(
+  theoretical = gpd_quantile(
+    (seq_along(excesses) - 0.5) / length(excesses),
+    scale = scale_est,
+    shape = shape_est
+  ),
+  empirical = sort(excesses)
+)
+
+qq_plot <- ggplot(qq_data, aes(x = theoretical, y = empirical)) +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    colour = "grey65",
+    linetype = "dashed",
+    linewidth = 0.6
+  ) +
+  geom_point(
+    colour = "#4C8BC2",
+    size = 1.5,
+    alpha = 0.65
+  ) +
+  labs(
+    title = "QQ plot",
+    x = "Theoretical quantiles",
+    y = "Sample quantiles"
+  ) +
+  plot_theme
+
+density_data <- data.frame(
+  excess = seq(0, max(excesses), length.out = 400)
+)
+density_data$density <- gpd_density(
+  density_data$excess,
+  scale = scale_est,
+  shape = shape_est
+)
+
+density_plot <- ggplot(data.frame(excess = excesses), aes(x = excess)) +
+  geom_histogram(
+    aes(y = after_stat(density)),
+    bins = 28,
+    fill = "#9FC4DF",
+    colour = "white",
+    linewidth = 0.2
+  ) +
+  geom_line(
+    data = density_data,
+    aes(x = excess, y = density),
+    colour = "#2F75B5",
+    linewidth = 1.1
+  ) +
+  labs(
+    title = "Density plot",
+    subtitle = gpd_subtitle,
+    x = stationary_axis_label("Excess over threshold", response_info),
+    y = "Density"
+  ) +
+  plot_theme
+
+return_level_plot <- ggplot(rv_declust, aes(x = period, y = level)) +
+  geom_ribbon(
+    aes(ymin = lower, ymax = upper),
+    fill = "#6F9FCB",
+    alpha = 0.25,
+    na.rm = TRUE
+  ) +
+  geom_line(
+    colour = "#2F75B5",
+    linewidth = 1
+  ) +
+  geom_point(
+    shape = 21,
+    size = 2.8,
+    stroke = 1,
+    colour = "#2F75B5",
+    fill = "white"
+  ) +
+  scale_x_log10(
+    breaks = return_periods,
+    labels = return_periods,
+    expand = expansion(mult = c(0.04, 0.05))
+  ) +
+  labs(
+    title = "Return level plot",
+    x = "Return period (years)",
+    y = paste0(response_info$label, " [", response_info$unit, "]")
+  ) +
+  plot_theme
+
+gpd_model_fit <- (qq_plot | density_plot | return_level_plot) +
+  plot_annotation(
+    title = paste("GPD model fit"),
+    tag_levels = "a", tag_prefix = "(", tag_suffix = ")",
+    theme = theme(
+      plot.title = element_text(
+        face = "bold",
+        size = 24,
+        hjust = 0
+      )
+    )
+  ) +
+  plot_layout(widths = c(1, 1, 1))
+
+gpd_figure_file <- stationary_figure_file(
+  response_info,
+  "gpd_model_fit.png"
+)
+
+ggsave(
+  gpd_figure_file,
+  gpd_model_fit,
+  width = 16,
+  height = 8,
+  dpi = 300,
+  bg = "white"
+)
+
+gpd_model_fit

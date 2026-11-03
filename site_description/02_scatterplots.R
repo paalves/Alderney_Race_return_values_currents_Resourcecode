@@ -6,52 +6,108 @@ library(data.table)
 source(.path_helper[file.exists(.path_helper)][1])
 rm(.path_helper)
 
-data <- fread(data_file())
+source(file.path(project_root(), "importation", "02_read_rscd_2026.R"))
+data <- read_rscd_2026()
 
-hex_panel <- function(x, y, xlab, title,
-                      ylab = expression(H[s]~"(m)"),
-                      breaks = c(1, 10, 100, 1000)) {
-  ggplot(data.frame(x = x, y = y), aes(x = x, y = y)) +
+required_variables <- c("hs", "Os", "tp", "Cspd", "angleDiff")
+missing_variables <- setdiff(required_variables, names(data))
+if (length(missing_variables)) {
+  stop(
+    "Missing variables for the scatterplot figure: ",
+    paste(missing_variables, collapse = ", "),
+    call. = FALSE
+  )
+}
+
+#' Hexagonal-bin density panel of y against x on a log colour scale.
+hex_panel <- function(x, y, xlab, ylab, title) {
+  plot_data <- data.frame(x = x, y = y)
+  plot_data <- plot_data[is.finite(plot_data$x) & is.finite(plot_data$y), ]
+
+  ggplot(plot_data, aes(x = x, y = y)) +
     geom_hex(bins = 80, aes(fill = after_stat(count))) +
     scale_fill_viridis_c(
-      option = "turbo",
-      trans  = "log10",
-      name   = "Observations",
-      breaks = breaks,
-      labels = scales::comma(breaks),
-      guide  = guide_colorbar(
+      option = "viridis",
+      trans = "log10",
+      limits = c(1, 1000),
+      oob = scales::squish,
+      name = "Observations",
+      breaks = c(1, 10, 100, 1000),
+      labels = c("1", "10", "100", "1,000+"),
+      guide = guide_colorbar(
         title.position = "top",
         title.hjust = 0.5,
-        barwidth = grid::unit(3.4, "cm"),
+        barwidth = grid::unit(4.2, "cm"),
         barheight = grid::unit(0.45, "cm")
       )
     ) +
     labs(title = title, x = xlab, y = ylab) +
-    theme_minimal(base_size = 18) +
+    theme_minimal(base_size = 15) +
     theme(
       panel.grid.minor = element_blank(),
-      plot.title       = element_text(size = 18, face = "bold"),
-      axis.title       = element_text(size = 21),
-      axis.text        = element_text(size = 18),
-      legend.position  = "bottom",
-      legend.title     = element_text(size = 19, face = "bold"),
-      legend.text      = element_text(size = 17),
-      legend.key.width = grid::unit(3.4, "cm"),
-      legend.key.height = grid::unit(0.55, "cm")
+      plot.title = element_text(size = 16, face = "bold"),
+      axis.title = element_text(size = 16),
+      axis.text = element_text(size = 13),
+      legend.position = "bottom",
+      legend.title = element_text(size = 14, face = "bold"),
+      legend.text = element_text(size = 13),
+      legend.key.width = grid::unit(4.2, "cm"),
+      legend.key.height = grid::unit(0.5, "cm")
     )
 }
 
-pa <- hex_panel(data$hs,        data$tp, expression(H[s]~"(m)"),
-                "Wave peak period\nvs. significant wave height",
-                ylab = expression(T[p]~"(s)"))
-pb <- hex_panel(data$Cspd,      data$hs, "Current speed (m/s)",
-                "Significant wave height\nvs. current speed",
-                breaks = c(1, 10, 100))
-pc <- hex_panel(data$angleDiff, data$hs, "Angular difference (deg)",
-                "Significant wave height\nvs. angular difference",
-                breaks = c(1, 10, 100, 1000))
+hs_tp <- hex_panel(
+  data$hs, data$tp,
+  xlab = expression(H[s] ~ "[m]"),
+  ylab = expression(T[p] ~ "[s]"),
+  title = "Wave peak period vs.\nsignificant wave height"
+)
+hs_current <- hex_panel(
+  data$Cspd, data$hs,
+  xlab = expression("Current speed [m"~s^{-1} * "]"),
+  ylab = expression(H[s] ~ "[m]"),
+  title = "Significant wave height vs.\ncurrent speed"
+)
+hs_angle <- hex_panel(
+  data$angleDiff, data$hs,
+  xlab = "Angular difference [°]",
+  ylab = expression(H[s] ~ "[m]"),
+  title = "Significant wave height vs.\nangular difference"
+)
 
-combined <- pa + pb + pc + plot_layout(ncol = 3)
+os_tp <- hex_panel(
+  data$Os, data$tp,
+  xlab = expression(O[s] ~ "[m"~s^{-1} * "]"),
+  ylab = expression(T[p] ~ "[s]"),
+  title = "Wave peak period vs.\norbital speed"
+)
+os_current <- hex_panel(
+  data$Cspd, data$Os,
+  xlab = expression("Current speed [m"~s^{-1} * "]"),
+  ylab = expression(O[s] ~ "[m"~s^{-1} * "]"),
+  title = "Orbital speed vs.\ncurrent speed"
+)
+os_angle <- hex_panel(
+  data$angleDiff, data$Os,
+  xlab = "Angular difference [°]",
+  ylab = expression(O[s] ~ "[m"~s^{-1} * "]"),
+  title = "Orbital speed vs.\nangular difference"
+)
 
-ggsave(file.path(figure_dir("site_description"), "hs_scatter_hexbin.png"),
-       combined, width = 14, height = 5.5, dpi = 300)
+combined <- wrap_plots(
+  hs_tp, hs_current, hs_angle,
+  os_tp, os_current, os_angle,
+  ncol = 3,
+  guides = "collect"
+) + plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")") &
+  theme(legend.position = "bottom")
+
+ggsave(
+  file.path(figure_dir("site_description"), "hs_scatter_hexbin.png"),
+  combined,
+  width = 14,
+  height = 10.5,
+  dpi = 300
+)
+
+print(combined)

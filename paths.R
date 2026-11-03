@@ -1,3 +1,4 @@
+#' Project root directory, from PAPER_CODE_ROOT, the location of paths.R or the working directory.
 project_root <- function() {
   root <- Sys.getenv("PAPER_CODE_ROOT", unset = "")
   if (nzchar(root)) {
@@ -16,18 +17,20 @@ project_root <- function() {
   }
 
   wd <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
-  while (basename(wd) %in% c("stationary_EVA", "site_description", "nonstationary_EVA")) {
+  while (basename(wd) %in% c("stationary_EVA", "site_description", "nonstationary_EVA", "contours", "importation")) {
     wd <- dirname(wd)
   }
   wd
 }
 
+#' Path to a file inside the project.
 project_file <- function(...) {
   file.path(project_root(), ...)
 }
 
-data_file <- function(filename = "data_alderney_rscd_2024.csv") {
-  env_path <- Sys.getenv("DATA_ALDERNEY_RSCD_2024_PATH", unset = "")
+#' Path to the hindcast data file, overridable by DATA_RSCD_2026_PATH.
+data_file <- function(filename = "data_rscd_alderney_2026.csv") {
+  env_path <- Sys.getenv("DATA_RSCD_2026_PATH", unset = "")
   if (nzchar(env_path)) {
     return(normalizePath(env_path, winslash = "/", mustWork = TRUE))
   }
@@ -42,7 +45,7 @@ data_file <- function(filename = "data_alderney_rscd_2024.csv") {
   if (is.na(hit)) {
     stop(
       "Could not find ", filename,
-      ". Set DATA_ALDERNEY_RSCD_2024_PATH or put the file in data/.",
+      ". Set DATA_RSCD_2026_PATH or put the file in data/.",
       call. = FALSE
     )
   }
@@ -50,12 +53,14 @@ data_file <- function(filename = "data_alderney_rscd_2024.csv") {
   normalizePath(hit, winslash = "/", mustWork = TRUE)
 }
 
+#' Create and return a figure directory inside the project.
 figure_dir <- function(...) {
   path <- project_file("figures", ...)
   dir.create(path, recursive = TRUE, showWarnings = FALSE)
   path
 }
 
+#' Find and source paths.R from the working directory or its parents.
 source_project_paths <- function(start = getwd()) {
   start <- normalizePath(start, winslash = "/", mustWork = TRUE)
   candidates <- unique(c(start, dirname(start), dirname(dirname(start))))

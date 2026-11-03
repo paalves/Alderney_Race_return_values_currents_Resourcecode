@@ -1,18 +1,24 @@
 library(data.table)
 library(ggplot2)
 library(gridExtra)
+invisible(Sys.setlocale("LC_TIME", "C"))
 
 .path_helper <- c("paths.R", "../paths.R", "../../paths.R")
 source(.path_helper[file.exists(.path_helper)][1])
 rm(.path_helper)
 
-data <- fread(data_file())
+source(file.path(project_root(), "importation", "02_read_rscd_2026.R"))
+data <- read_rscd_2026()
 
-data[, TideCondition := fifelse(
-  fje == "flot", "Flood",
-  fifelse(fje == "jusant", "Ebb", "Slack")
-)]
-data[, TideCondition := factor(TideCondition, levels = c("Slack", "Flood", "Ebb"))]
+if ("fje" %in% names(data)) {
+  data[, TideCondition := fifelse(
+    fje == "flot", "Flood",
+    fifelse(fje == "jusant", "Ebb", "Slack")
+  )]
+  data[, TideCondition := factor(TideCondition, levels = c("Slack", "Flood", "Ebb"))]
+} else {
+  data[, TideCondition := factor("Unknown", levels = "Unknown")]
+}
 
 data[, dir_bin := as.numeric(as.character(cut(
   Cdirdeg %% 360,
@@ -41,27 +47,73 @@ theme_rose <- theme_minimal(base_size = 14) +
     legend.position = "none"
   )
 
-tide_colors <- c("Slack" = "#66BB6A", "Flood" = "#5C6BC0", "Ebb" = "#EF5350")
+tide_colors <- c("Slack" = "#009E73", "Flood" = "#0072B2", "Ebb" = "#D55E00", "Unknown" = "#BDBDBD")
 
-make_hist <- function(var, fill_col, title, xlab, adjust = 1.5) {
-  brk <- seq(0, max(data[[var]], na.rm = TRUE), length.out = 50)
-  ggplot(data, aes(x = .data[[var]])) +
+#' Histogram of one variable with a kernel density curve.
+make_hist <- function(var, fill_col, title, xlab, adjust = 1.5, reflect_zero = FALSE) {
+  x <- data[[var]]
+  x <- x[is.finite(x)]
+  xmax <- max(x)
+  brk <- seq(0, xmax, length.out = 50)
+
+  p <- ggplot(data, aes(x = .data[[var]])) +
     geom_histogram(
       aes(y = after_stat(density)),
       breaks = brk,
       fill = fill_col,
       color = "black",
       linewidth = 0.2
-    ) +
-    geom_density(linewidth = 0.75, color = "red", adjust = adjust) +
+    )
+
+  if (reflect_zero) {
+    kde <- density(
+      c(x, -x),
+      bw = bw.nrd0(x) * adjust,
+      from = 0,
+      to = xmax,
+      n = 512
+    )
+    kde_data <- data.frame(x = kde$x, density = 2 * kde$y)
+    p <- p + geom_line(
+      data = kde_data,
+      aes(x = x, y = density),
+      inherit.aes = FALSE,
+      linewidth = 0.75,
+      color = "red"
+    )
+  } else {
+    p <- p + geom_density(linewidth = 0.75, color = "red", adjust = adjust)
+  }
+
+  p +
     labs(title = title, x = xlab, y = "Density") +
     theme_dist
 }
 
 p1 <- make_hist("hs", "lightblue", "Significant wave height distribution", expression(H[s]~"[m]"))
 p2 <- make_hist("tp", "lightgreen", "Wave peak period distribution", expression(T[p]~"[s]"))
-p3 <- make_hist("Cspd", "lavender", "Current speed distribution", "Current speed [m/s]", adjust = 2)
-p4 <- make_hist("OrbSpeed", "orange", "Orbital speed distribution", "Orbital speed [m/s]")
+p3 <- make_hist(
+  "Cspd",
+  "lavender",
+  "Current speed distribution",
+  expression("Current speed [m"~s^{-1}*"]"),
+  adjust = 2,
+  reflect_zero = TRUE
+)
+p4 <- if ("Os" %in% names(data)) {
+  make_hist(
+    "Os",
+    "orange",
+    "Orbital speed distribution",
+    expression("Orbital speed [m"~s^{-1}*"]")
+  )
+} else {
+  grid::nullGrob()
+}
+p1 <- p1 + labs(tag = "(a)")
+p2 <- p2 + labs(tag = "(b)")
+p3 <- p3 + labs(tag = "(c)")
+if (inherits(p4, "ggplot")) p4 <- p4 + labs(tag = "(d)")
 
 rose_scale_x <- scale_x_continuous(
   limits = c(0, 360),
@@ -74,14 +126,14 @@ p_rose_cur <- ggplot(data, aes(x = dir_bin)) +
   coord_polar(start = 0) +
   rose_scale_x +
   scale_fill_gradient(low = "#E0F7FA", high = "purple") +
-  labs(title = "Current direction rose") +
+  labs(title = "Current direction rose", tag = "(a)") +
   theme_rose
 
 p_rose_wave <- ggplot(data, aes(x = dp)) +
   geom_histogram(bins = 16, center = 11.25, fill = "darkblue", color = "white", linewidth = 0.1) +
   coord_polar(start = 0) +
   rose_scale_x +
-  labs(title = "Wave direction rose") +
+  labs(title = "Wave direction rose", tag = "(b)") +
   theme_rose
 
 p_hist_diff <- ggplot(data, aes(x = angleDiff, fill = TideCondition, color = TideCondition)) +
@@ -97,11 +149,12 @@ p_hist_diff <- ggplot(data, aes(x = angleDiff, fill = TideCondition, color = Tid
   scale_x_continuous(limits = c(0, 360), breaks = seq(0, 360, by = 45)) +
   labs(
     title = "Angular difference between wave and current directions",
-    subtitle = "180 deg means waves oppose currents. 0/360 deg means waves follow currents. 90/270 deg means waves are perpendicular to currents.",
-    x = "Angular difference [deg]",
+    subtitle = "180° means waves oppose currents. 0°/360° means waves follow currents.\n90°/270° means waves are perpendicular to currents.",
+    x = "Angular difference [°]",
     y = "Density",
     fill = "Tide condition",
-    color = "Tide condition"
+    color = "Tide condition",
+    tag = "(c)"
   ) +
   theme_bw(base_size = 14) +
   theme(
@@ -112,17 +165,15 @@ p_hist_diff <- ggplot(data, aes(x = angleDiff, fill = TideCondition, color = Tid
     legend.box.background = element_rect(color = "gray90", fill = "white")
   )
 
-grid.arrange(p1, p2, p3, p4, nrow = 2, ncol = 2)
-
-grid.arrange(
-  arrangeGrob(p_rose_cur, p_rose_wave, ncol = 2),
-  p_hist_diff,
-  nrow = 2,
-  heights = c(1, 0.8)
-)
+out_dir <- figure_dir("site_description")
+ggsave(file.path(out_dir, "hist.png"), arrangeGrob(p1, p2, p3, p4, nrow = 2, ncol = 2),
+       width = 14, height = 10, dpi = 300, bg = "white")
+ggsave(file.path(out_dir, "directions.png"),
+       arrangeGrob(arrangeGrob(p_rose_cur, p_rose_wave, ncol = 2), p_hist_diff, nrow = 2, heights = c(1, 0.8)),
+       width = 12, height = 11, dpi = 300, bg = "white")
 
 data[, time := as.POSIXct(time)]
-data_sub <- data[261450:261550]
+data_sub <- data[time >= as.POSIXct("2023-10-29 17:00", tz = "UTC") & time <= as.POSIXct("2023-11-02 21:00", tz = "UTC")]
 
 tide_rle <- rle(as.character(data_sub$TideCondition))
 end_idx <- cumsum(tide_rle$lengths)
@@ -142,13 +193,13 @@ p_timeseries <- ggplot() +
     inherit.aes = FALSE
   ) +
   geom_line(data = data_sub, aes(x = time, y = wlv, color = "Water level [m]"), linewidth = 0.7) +
-  geom_line(data = data_sub, aes(x = time, y = Cspd, color = "Current speed [m.s-1]"), linewidth = 0.7) +
+  geom_line(data = data_sub, aes(x = time, y = Cspd, color = "Current speed [m s\u207b\u00b9]"), linewidth = 0.7) +
   scale_fill_manual(
-    values = c("Slack" = "white", "Flood" = "#C8E6C9", "Ebb" = "#FFF9C4"),
+    values = c("Slack" = "white", "Flood" = "#C8E6C9", "Ebb" = "#FFF9C4", "Unknown" = "#F0F0F0"),
     name = "Tidal condition"
   ) +
   scale_color_manual(
-    values = c("Water level [m]" = "#2196F3", "Current speed [m.s-1]" = "#F44336"),
+    values = c("Water level [m]" = "#2196F3", "Current speed [m s\u207b\u00b9]" = "#F44336"),
     name = NULL
   ) +
   scale_x_datetime(date_breaks = "12 hours", date_labels = "%d %b.\n%Hh") +
@@ -172,4 +223,4 @@ p_timeseries <- ggplot() +
     plot.caption = element_text(hjust = 0.5, color = "gray40", size = 10)
   )
 
-p_timeseries
+ggsave(file.path(out_dir, "tides.png"), p_timeseries, width = 12, height = 5, dpi = 300, bg = "white")
