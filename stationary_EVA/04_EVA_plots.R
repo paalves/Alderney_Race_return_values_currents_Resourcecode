@@ -1,37 +1,13 @@
 library(ggplot2)
 library(patchwork)
 
-.path_helper <- c("paths.R", "../paths.R", "../../paths.R")
-source(.path_helper[file.exists(.path_helper)][1])
-rm(.path_helper)
-
-source(file.path(project_root(), "stationary_EVA", "00_stationary_helpers.R"))
-
-response_variable <- get0("response_variable", ifnotfound = "hs", inherits = TRUE)
-fit_is_missing_or_stale <-
-  !exists("fit_declust", inherits = FALSE) ||
-  !exists("stationary_fitted_response", inherits = FALSE) ||
-  !identical(tolower(stationary_fitted_response), tolower(response_variable))
-
-if (fit_is_missing_or_stale) {
-  source(file.path(project_root(), "stationary_EVA", "03_analysis.R"))
-}
-
 #' Quantile function of the generalized Pareto distribution.
 gpd_quantile <- function(probability, scale, shape) {
-  if (abs(shape) < 1e-6) {
-    -scale * log(1 - probability)
-  } else {
-    (scale / shape) * ((1 - probability)^(-shape) - 1)
-  }
+  (scale / shape) * ((1 - probability)^(-shape) - 1)
 }
 
 #' Density of the generalized Pareto distribution.
 gpd_density <- function(x, scale, shape) {
-  if (abs(shape) < 1e-6) {
-    return(exp(-x / scale) / scale)
-  }
-
   support <- 1 + shape * x / scale > 0
   density <- rep(NA_real_, length(x))
   density[support] <- (1 / scale) *
@@ -42,22 +18,14 @@ gpd_density <- function(x, scale, shape) {
 scale_est <- unname(fit_declust$param["scale"])
 shape_est <- unname(fit_declust$param["shape"])
 
-if (all(is.finite(fit_summary$lower[fit_summary$parameter == "shape"]))) {
-  gpd_subtitle <- bquote(
-    xi == .(sprintf("%.3f", shape_est)) ~ "[" ~
-      .(sprintf("%.3f", fit_summary$lower[fit_summary$parameter == "shape"])) ~ "," ~
-      .(sprintf("%.3f", fit_summary$upper[fit_summary$parameter == "shape"])) ~ "]" ~
-      "   " ~ sigma == .(sprintf("%.3f", scale_est)) ~ "[" ~
-      .(sprintf("%.3f", fit_summary$lower[fit_summary$parameter == "scale"])) ~ "," ~
-      .(sprintf("%.3f", fit_summary$upper[fit_summary$parameter == "scale"])) ~ "]"
-  )
-} else {
-  gpd_subtitle <- bquote(
-    xi == .(sprintf("%.3f", shape_est)) ~ "   " ~
-      sigma == .(sprintf("%.3f", scale_est)) ~
-      "   (standard errors unavailable)"
-  )
-}
+gpd_subtitle <- bquote(
+  xi == .(sprintf("%.3f", shape_est)) ~ "[" ~
+    .(sprintf("%.3f", fit_summary$lower[fit_summary$parameter == "shape"])) ~ "," ~
+    .(sprintf("%.3f", fit_summary$upper[fit_summary$parameter == "shape"])) ~ "]" ~
+    "   " ~ sigma == .(sprintf("%.3f", scale_est)) ~ "[" ~
+    .(sprintf("%.3f", fit_summary$lower[fit_summary$parameter == "scale"])) ~ "," ~
+    .(sprintf("%.3f", fit_summary$upper[fit_summary$parameter == "scale"])) ~ "]"
+)
 
 plot_theme <- theme_minimal(base_size = 16) +
   theme(
@@ -139,8 +107,7 @@ return_level_plot <- ggplot(rv_declust, aes(x = period, y = level)) +
   geom_ribbon(
     aes(ymin = lower, ymax = upper),
     fill = "#6F9FCB",
-    alpha = 0.25,
-    na.rm = TRUE
+    alpha = 0.25
   ) +
   geom_line(
     colour = "#2F75B5",

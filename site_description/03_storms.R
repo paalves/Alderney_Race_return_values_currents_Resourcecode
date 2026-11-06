@@ -4,22 +4,10 @@ library(patchwork)
 library(scales)
 library(data.table)
 
-.path_helper <- c("paths.R", "../paths.R", "../../paths.R")
-source(.path_helper[file.exists(.path_helper)][1])
-rm(.path_helper)
+source("paths.R")
 
-source(file.path(project_root(), "importation", "02_read_rscd_2026.R"))
+source("importation/02_read_rscd_2026.R")
 data <- read_rscd_2026()
-
-required_variables <- c("time", "hs", "dp", "tp", "Cspd", "Os")
-missing_variables <- setdiff(required_variables, names(data))
-if (length(missing_variables)) {
-  stop(
-    "Missing variables for the storm-evolution figure: ",
-    paste(missing_variables, collapse = ", "),
-    call. = FALSE
-  )
-}
 
 HS_THRESHOLD <- 5.5
 WINDOW       <- 50
@@ -77,12 +65,9 @@ storm_list <- lapply(seq_along(peak_idx), function(s) {
 storm_df <- bind_rows(storm_list)
 storm_summary <- storm_df %>%
   distinct(storm_id, peak_date, peak_hs) %>%
-  filter(peak_hs > HS_THRESHOLD) %>%
-  arrange(storm_id) %>%
   mutate(label = sprintf("%s (Hs: %.1f m)", peak_date, peak_hs))
 
 storm_df <- storm_df %>%
-  select(-any_of("label")) %>%
   left_join(storm_summary %>% select(storm_id, label), by = "storm_id")
 
 ordered_labels <- storm_summary$label
@@ -206,9 +191,6 @@ legend_panel <- ggplot(storm_summary,
     legend.margin = margin(t = 8)
   )
 shared_legend <- cowplot::get_plot_component(legend_panel, "guide-box-bottom")
-if (is.null(shared_legend)) {
-  shared_legend <- cowplot::get_plot_component(legend_panel, "^guide-box$")
-}
 
 grid_top <- plot_grid(pa, pe, ncol = 2, align = "hv")
 grid_bottom <- plot_grid(pb, pc, pd, ncol = 3, align = "hv")

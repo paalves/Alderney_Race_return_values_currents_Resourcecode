@@ -1,8 +1,6 @@
-.path_helper <- c("paths.R", "../paths.R", "../../paths.R")
-source(.path_helper[file.exists(.path_helper)][1])
-rm(.path_helper)
+source("paths.R")
 
-source(file.path(project_root(), "importation", "02_read_rscd_2026.R"))
+source("importation/02_read_rscd_2026.R")
 library(data.table)
 library(evgam)
 library(ggplot2)
@@ -43,7 +41,7 @@ effect_panel <- function(pe, rug, v, title, ylab, rug_alpha) {
 }
 
 fits <- lapply(c(hs = "hs", os = "os"), function(r)
-  readRDS(project_file("outputs", sprintf("evgam_selection_%s_%s.rds", dataset_tag, r)))$best_fit)
+  readRDS(file.path("outputs", sprintf("evgam_selection_%s_%s.rds", dataset_tag, r)))$best_fit)
 
 set.seed(2026)
 for (r in c("hs", "os")) {
@@ -59,7 +57,7 @@ for (r in c("hs", "os")) {
          width = 10, height = 4, dpi = 300, bg = "white")
 
   p <- predict(bf$fit_gpd, newdata = pk, type = "response")
-  res <- sort(-log(pmax(pmax(1 + p$shape * pk$excess / p$scale, 0)^(-1 / p$shape), 1e-300)))
+  res <- sort(-log((1 + p$shape * pk$excess / p$scale)^(-1 / p$shape)))
   qq <- ggplot(data.table(th = qexp(ppoints(length(res))), obs = res), aes(th, obs)) +
     geom_abline(linetype = 2, colour = "grey50") +
     geom_point(size = 1) +
@@ -68,7 +66,7 @@ for (r in c("hs", "os")) {
   ggsave(file.path(out_dir, files[[r]][["qq"]]), qq, width = 4.5, height = 4.3, dpi = 300, bg = "white")
 }
 
-hourly <- as.data.table(read_rscd_2026(data_file("data_rscd_alderney_2026.csv")))
+hourly <- read_rscd_2026()
 for (r in c("hs", "os")) {
   bf <- fits[[r]]
   rug <- hourly[sample(.N, 3000)]
@@ -83,5 +81,4 @@ for (r in c("hs", "os")) {
   }
   ggsave(file.path(out_dir, files[[r]][["ald"]]), (panels[[1]] | panels[[2]]) / (panels[[3]] | panels[[4]]) + tags,
          width = 10, height = 7.5, dpi = 300, bg = "white")
-  message("Saved: ", paste(file.path(out_dir, files[[r]]), collapse = ", "))
 }

@@ -8,7 +8,7 @@ All analyses use `data_rscd_alderney_2026.csv`, hourly sea states at ResourceCod
 
 `importation/01_data_importation_example.R` shows how the hindcast variables and the orbital speed are extracted with the `resourcecode` package. The ResourceCode database is publicly available at https://resourcecode.ifremer.fr/.
 
-Paths are handled by `paths.R`. The data file can be placed elsewhere and given through the `DATA_RSCD_2026_PATH` environment variable.
+All paths are relative to the repository root, where the data file must be placed and from which every script must be run.
 
 ## Repository structure
 

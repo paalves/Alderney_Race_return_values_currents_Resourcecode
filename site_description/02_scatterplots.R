@@ -2,27 +2,14 @@ library(ggplot2)
 library(patchwork)
 library(data.table)
 
-.path_helper <- c("paths.R", "../paths.R", "../../paths.R")
-source(.path_helper[file.exists(.path_helper)][1])
-rm(.path_helper)
+source("paths.R")
 
-source(file.path(project_root(), "importation", "02_read_rscd_2026.R"))
+source("importation/02_read_rscd_2026.R")
 data <- read_rscd_2026()
-
-required_variables <- c("hs", "Os", "tp", "Cspd", "angleDiff")
-missing_variables <- setdiff(required_variables, names(data))
-if (length(missing_variables)) {
-  stop(
-    "Missing variables for the scatterplot figure: ",
-    paste(missing_variables, collapse = ", "),
-    call. = FALSE
-  )
-}
 
 #' Hexagonal-bin density panel of y against x on a log colour scale.
 hex_panel <- function(x, y, xlab, ylab, title) {
   plot_data <- data.frame(x = x, y = y)
-  plot_data <- plot_data[is.finite(plot_data$x) & is.finite(plot_data$y), ]
 
   ggplot(plot_data, aes(x = x, y = y)) +
     geom_hex(bins = 80, aes(fill = after_stat(count))) +

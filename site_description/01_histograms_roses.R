@@ -3,25 +3,16 @@ library(ggplot2)
 library(gridExtra)
 invisible(Sys.setlocale("LC_TIME", "C"))
 
-.path_helper <- c("paths.R", "../paths.R", "../../paths.R")
-source(.path_helper[file.exists(.path_helper)][1])
-rm(.path_helper)
+source("paths.R")
 
-source(file.path(project_root(), "importation", "02_read_rscd_2026.R"))
+source("importation/02_read_rscd_2026.R")
 data <- read_rscd_2026()
 
-if ("fje" %in% names(data)) {
-  data[, TideCondition := fifelse(
-    fje == "flot", "Flood",
-    fifelse(fje == "jusant", "Ebb", "Slack")
-  )]
-  data[, TideCondition := factor(TideCondition, levels = c("Slack", "Flood", "Ebb"))]
-} else {
-  data[, TideCondition := factor("Unknown", levels = "Unknown")]
-}
+data[, TideCondition := factor(fifelse(fje == "flot", "Flood", fifelse(fje == "jusant", "Ebb", "Slack")),
+                               levels = c("Slack", "Flood", "Ebb"))]
 
 data[, dir_bin := as.numeric(as.character(cut(
-  Cdirdeg %% 360,
+  Cdirdeg,
   breaks = seq(0, 360, by = 10),
   include.lowest = TRUE,
   labels = seq(5, 355, by = 10)
@@ -47,12 +38,11 @@ theme_rose <- theme_minimal(base_size = 14) +
     legend.position = "none"
   )
 
-tide_colors <- c("Slack" = "#009E73", "Flood" = "#0072B2", "Ebb" = "#D55E00", "Unknown" = "#BDBDBD")
+tide_colors <- c("Slack" = "#009E73", "Flood" = "#0072B2", "Ebb" = "#D55E00")
 
 #' Histogram of one variable with a kernel density curve.
 make_hist <- function(var, fill_col, title, xlab, adjust = 1.5, reflect_zero = FALSE) {
   x <- data[[var]]
-  x <- x[is.finite(x)]
   xmax <- max(x)
   brk <- seq(0, xmax, length.out = 50)
 
@@ -100,20 +90,11 @@ p3 <- make_hist(
   adjust = 2,
   reflect_zero = TRUE
 )
-p4 <- if ("Os" %in% names(data)) {
-  make_hist(
-    "Os",
-    "orange",
-    "Orbital speed distribution",
-    expression("Orbital speed [m"~s^{-1}*"]")
-  )
-} else {
-  grid::nullGrob()
-}
+p4 <- make_hist("Os", "orange", "Orbital speed distribution", expression("Orbital speed [m"~s^{-1}*"]"))
 p1 <- p1 + labs(tag = "(a)")
 p2 <- p2 + labs(tag = "(b)")
 p3 <- p3 + labs(tag = "(c)")
-if (inherits(p4, "ggplot")) p4 <- p4 + labs(tag = "(d)")
+p4 <- p4 + labs(tag = "(d)")
 
 rose_scale_x <- scale_x_continuous(
   limits = c(0, 360),
@@ -195,7 +176,7 @@ p_timeseries <- ggplot() +
   geom_line(data = data_sub, aes(x = time, y = wlv, color = "Water level [m]"), linewidth = 0.7) +
   geom_line(data = data_sub, aes(x = time, y = Cspd, color = "Current speed [m s\u207b\u00b9]"), linewidth = 0.7) +
   scale_fill_manual(
-    values = c("Slack" = "white", "Flood" = "#C8E6C9", "Ebb" = "#FFF9C4", "Unknown" = "#F0F0F0"),
+    values = c("Slack" = "white", "Flood" = "#C8E6C9", "Ebb" = "#FFF9C4"),
     name = "Tidal condition"
   ) +
   scale_color_manual(

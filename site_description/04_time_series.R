@@ -2,24 +2,10 @@ library(data.table)
 library(ggplot2)
 library(patchwork)
 
-.path_helper <- c("paths.R", "../paths.R", "../../paths.R")
-source(.path_helper[file.exists(.path_helper)][1])
-rm(.path_helper)
+source("paths.R")
 
-source(file.path(project_root(), "importation", "02_read_rscd_2026.R"))
+source("importation/02_read_rscd_2026.R")
 data <- read_rscd_2026()
-
-required_variables <- c("time", "hs", "Os")
-missing_variables <- setdiff(required_variables, names(data))
-if (length(missing_variables)) {
-  stop(
-    "Missing variables for the time-series figure: ",
-    paste(missing_variables, collapse = ", "),
-    call. = FALSE
-  )
-}
-
-setorder(data, time)
 
 #' Time-series panel of one variable.
 time_series_panel <- function(variable, colour, title, ylab, show_x = TRUE) {
@@ -27,9 +13,6 @@ time_series_panel <- function(variable, colour, title, ylab, show_x = TRUE) {
     time = data$time,
     value = data[[variable]]
   )
-  plot_data <- plot_data[
-    !is.na(plot_data$time) & is.finite(plot_data$value),
-  ]
 
   p <- ggplot(plot_data, aes(x = time, y = value)) +
     geom_line(

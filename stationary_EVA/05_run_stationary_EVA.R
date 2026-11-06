@@ -1,20 +1,16 @@
-response_variable <- "Os"  
+response_variable <- "Os"
 
-.path_helper <- c("paths.R", "../paths.R", "../../paths.R")
-source(.path_helper[file.exists(.path_helper)][1])
-rm(.path_helper)
+source("paths.R")
+source("importation/02_read_rscd_2026.R")
+source("stationary_EVA/00_stationary_helpers.R")
 
-stationary_root <- project_file("stationary_EVA")
-stationary_scripts <- c(
-  "01_threshold_selection.R",
-  "02_declustering_sensitivity.R",
-  "03_analysis.R",
-  "04_EVA_plots.R"
-)
+data <- read_rscd_2026()
+response_info <- stationary_response_info(data, response_variable)
+response_values <- response_info$values
+chosen_threshold <- as.numeric(quantile(response_values, 0.96))
 
-for (script in stationary_scripts) {
-  message("Running ", script, " for response ", response_variable, "...")
-  source(file.path(stationary_root, script), local = environment())
+for (script in c("01_threshold_selection.R", "02_declustering_sensitivity.R", "03_analysis.R", "04_EVA_plots.R")) {
+  source(file.path("stationary_EVA", script), local = environment())
 }
 
 stationary_eva_result <- list(
@@ -34,19 +30,9 @@ stationary_eva_result <- list(
   )
 )
 
-result_file <- project_file(
-  "outputs",
-  paste0("stationary_EVA_", response_info$tag, ".rds")
-)
-dir.create(dirname(result_file), recursive = TRUE, showWarnings = FALSE)
-saveRDS(stationary_eva_result, result_file)
-
-message("Stationary EVA complete for ", response_info$label, ".")
-message("Results: ", result_file)
-message("Figures: ", dirname(gpd_figure_file))
+dir.create("outputs", showWarnings = FALSE)
+saveRDS(stationary_eva_result, file.path("outputs", paste0("stationary_EVA_", response_info$tag, ".rds")))
 
 print(threshold_summary)
 print(fit_summary)
 print(return_values)
-
-invisible(stationary_eva_result)
