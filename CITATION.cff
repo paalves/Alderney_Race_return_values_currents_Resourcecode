@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite it as below."
+title: "Code for: Statistical modeling of significant wave height and near-bed orbital speed in strong currents: an application to the Alderney Race using the ResourceCode hindcast (1994-2026)"
+authors:
+  - family-names: Alves
+    given-names: Paul-Adrien
+    orcid: https://orcid.org/0009-0005-7060-9393
+version: 1.0.0
+license: MIT
