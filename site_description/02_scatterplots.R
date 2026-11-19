@@ -81,9 +81,17 @@ os_angle <- hex_panel(
   title = "Orbital speed vs.\nangular difference"
 )
 
+hs_os <- hex_panel(
+  data$Os, data$hs,
+  xlab = expression(O[s] ~ "[m"~s^{-1} * "]"),
+  ylab = expression(H[s] ~ "[m]"),
+  title = "Significant wave height vs.\norbital speed"
+)
+
 combined <- wrap_plots(
   hs_tp, hs_current, hs_angle,
   os_tp, os_current, os_angle,
+  hs_os, guide_area(),
   ncol = 3,
   guides = "collect"
 ) + plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")") &
@@ -93,7 +101,7 @@ ggsave(
   file.path(figure_dir("site_description"), "hs_scatter_hexbin.png"),
   combined,
   width = 14,
-  height = 10.5,
+  height = 15.5,
   dpi = 300
 )
 

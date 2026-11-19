@@ -16,5 +16,5 @@ data <- read_rscd_2026()
 result_3d <- run_diform_contours(data, response_variable, observation_years(data))
 
 plot_dir <- figure_dir("contours", "rscd_2026", response_tag)
-plot_diform_3d_r(result_3d, data, response_info, plot_dir, show_support_plane = FALSE)
+plot_diform_composite(result_3d, data, response_info, plot_dir, second_ridge = response_tag == "os")
 plot_diform_gpd_qq(result_3d, file.path(plot_dir, "diform_gpd_qq_diagnostics.png"))

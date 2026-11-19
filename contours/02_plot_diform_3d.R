@@ -1,6 +1,9 @@
+library(ggplot2)
+library(patchwork)
+
 diform3d_tangent_color <- "#7B2CBF"
 diform3d_obs_color <- "#111111"
-diform3d_palette <- grDevices::hcl.colors(256, "Plasma")
+diform3d_palette <- viridisLite::viridis(256)
 
 #' Add transparency to colours.
 diform3d_alpha <- function(col, alpha = 1) {
@@ -22,9 +25,9 @@ diform3d_surface_colors <- function(z, vmin, vmax, alpha = 0.74) {
   diform3d_color_values(z_cell, vmin, vmax, alpha)
 }
 
-#' Open a 1520 x 1200 PNG device.
+#' Open a 2400 x 1150 PNG device.
 diform3d_open_png <- function(path) {
-  ragg::agg_png(path, width = 1520, height = 1200, res = 160, background = "white")
+  ragg::agg_png(path, width = 2400, height = 1150, res = 160, background = "white")
 }
 
 #' Half-space normals and offsets of the contour in unnormalized working-space coordinates.
@@ -276,18 +279,14 @@ diform3d_add_annotation <- function(labels, cex = 1.25) {
   graphics::text(x, y - seq_along(labels) * line_h + line_h * 0.45, labels = labels, adj = c(0, 0.5), cex = cex)
 }
 
-#' Draw the contour surface in physical coordinates and save it as a PNG file.
-diform3d_plot_physical <- function(path, vertices, constraints, support_info, all_vertices, obs, obs_bg,
-                                   response_info, data_label, rp, elev, azim, show_support_plane) {
+#' Draw the contour surface in physical coordinates.
+diform3d_plot_physical <- function(vertices, constraints, support_info, all_vertices, obs, obs_bg,
+                                   response_info, elev, azim, show_support_plane, vmax) {
   limits <- diform3d_limits(all_vertices, obs)
-  vmax <- max(all_vertices[, 2]^2 + all_vertices[, 3]^2) * 1.03
   c_grid <- seq(min(vertices[, 1]), max(vertices[, 1]), length.out = 80)
   a_grid <- seq(0, 360, length.out = 180)
   hs <- diform3d_surface_physical(constraints, c_grid, a_grid)
 
-  diform3d_open_png(path)
-  on.exit(grDevices::dev.off(), add = TRUE)
-  layout(matrix(c(1, 2), 1, 2), widths = c(8.3, 1.3))
   old <- par(mar = c(5.2, 5.4, 5.0, 1.1), xpd = NA)
   on.exit(par(old), add = TRUE)
 
@@ -296,10 +295,9 @@ diform3d_plot_physical <- function(path, vertices, constraints, support_info, al
     col = diform3d_surface_colors(hs, 0, vmax, alpha = 0.76), border = NA, shade = NA, ticktype = "detailed",
     theta = azim, phi = elev, r = 7, expand = 0.88,
     xlab = "Current speed [m s⁻¹]", ylab = "Angular difference [°]", zlab = response_info$label,
-    main = sprintf("D-IFORM %s-yr contour\n%s", format(rp, trim = TRUE), data_label),
+    main = "(b) Physical space",
     cex.lab = 1.34, cex.axis = 1.06, cex.main = 1.42, font.main = 2
   )
-  graphics::mtext("(b)", side = 3, adj = 0, line = 2.6, font = 2, cex = 1.6)
 
   if (show_support_plane) {
     boundary <- diform3d_halfspace_physical_boundary_local(support_info, limits, n_cspd = 64, n_ang = 99)
@@ -323,19 +321,14 @@ diform3d_plot_physical <- function(path, vertices, constraints, support_info, al
     sprintf("Current speed = %.2f m s⁻¹", phys$Cspd[i]),
     sprintf("Angular difference = %.0f°", phys$angularDifference[i])
   ))
-  diform3d_draw_colorbar(vmax, response_info$label)
 }
 
-#' Draw the contour in working-space coordinates and save it as a PNG file.
-diform3d_plot_working <- function(path, vertices, triangles, support_info, all_vertices, obs, obs_bg,
-                                  response_info, data_label, rp, elev, azim, show_support_plane) {
+#' Draw the contour in working-space coordinates.
+diform3d_plot_working <- function(vertices, triangles, support_info, all_vertices, obs, obs_bg,
+                                  response_info, elev, azim, show_support_plane, vmax) {
   limits <- diform3d_limits(all_vertices, obs)
-  vmax <- max(all_vertices[, "H_L"]^2 + all_vertices[, "H_T"]^2) * 1.03
   comp <- response_info$components
 
-  diform3d_open_png(path)
-  on.exit(grDevices::dev.off(), add = TRUE)
-  layout(matrix(c(1, 2), 1, 2), widths = c(8.3, 1.3))
   old <- par(mar = c(4.8, 4.9, 4.8, 1.0), xpd = NA)
   on.exit(par(old), add = TRUE)
 
@@ -343,11 +336,9 @@ diform3d_plot_working <- function(path, vertices, triangles, support_info, all_v
     x = limits$cspd, y = limits$working_y, z = matrix(limits$working_z[1], 2, 2), zlim = limits$working_z,
     col = NA, border = NA, ticktype = "detailed", theta = azim, phi = elev, r = 7, expand = 0.88,
     xlab = "Current speed [m s⁻¹]", ylab = comp[1], zlab = comp[2],
-    main = sprintf("D-IFORM %s-yr contour in (Current speed, %s, %s) space\n%s",
-                   format(rp, trim = TRUE), comp[1], comp[2], data_label),
+    main = "(a) Transformed space",
     cex.lab = 1.28, cex.axis = 1.04, cex.main = 1.34, font.main = 2
   )
-  graphics::mtext("(a)", side = 3, adj = 0, line = 2.6, font = 2, cex = 1.6)
 
   polygons <- lapply(seq_len(nrow(triangles)), function(i) vertices[triangles[i, ], , drop = FALSE])
   depth <- vapply(polygons, function(p) mean(p[, 1] + p[, 2] + p[, 3]), numeric(1))
@@ -370,29 +361,132 @@ diform3d_plot_working <- function(path, vertices, triangles, support_info, all_v
   bg_pts <- diform3d_obs_working(obs_bg)
   graphics::points(grDevices::trans3d(bg_pts[, 1], bg_pts[, 2], bg_pts[, 3], pm),
                    pch = 16, cex = 0.17, col = diform3d_alpha(diform3d_obs_color, 0.040))
-  diform3d_draw_colorbar(vmax, response_info$label)
 }
 
-#' Draw the physical and working-space contour figures for every return period.
+#' Draw the working-space and physical contours side by side for every return period.
 plot_diform_3d_r <- function(diform_result, data, response_info, out_dir, elev = 45, azim = 40,
                              show_support_plane = FALSE) {
   obs <- data.frame(Cspd = data$Cspd, angularDifference = data$angleDiff, response = data[[diform_result$response]])
   obs_bg <- obs[unique(round(seq(1, nrow(obs), length.out = 20000))), , drop = FALSE]
   rps <- diform_result$return_periods
   all_vertices <- do.call(rbind, lapply(diform_result$contours_3d, `[[`, "vertices_3d"))
-  data_label <- sprintf("%d yr observed data", round(diform_result$n_years))
   triangles <- diform3d_direction_triangles(diform_result$directions)
+  vmax <- max(all_vertices[, 2]^2 + all_vertices[, 3]^2) * 1.03
+  suffix <- if (show_support_plane) "_with_support_plane" else ""
 
   for (rp in rps) {
     vertices <- diform_result$contours_3d[[as.character(rp)]]$vertices_3d
     constraints <- diform3d_constraints(diform_result, rp)
     support_info <- diform3d_support_info(vertices, triangles)
-    diform3d_plot_physical(file.path(out_dir, sprintf("diform_3d_%syr.png", format(rp, trim = TRUE))),
-                           vertices, constraints, support_info, all_vertices, obs, obs_bg,
-                           response_info, data_label, rp, elev, azim, show_support_plane)
-    suffix <- if (show_support_plane) "_with_support_plane" else "_working"
-    diform3d_plot_working(file.path(out_dir, sprintf("diform_3d_%syr%s.png", format(rp, trim = TRUE), suffix)),
-                          vertices, triangles, support_info, all_vertices, obs, obs_bg,
-                          response_info, data_label, rp, elev, azim, show_support_plane)
+    diform3d_open_png(file.path(out_dir, sprintf("diform_3d_%syr%s.png", format(rp, trim = TRUE), suffix)))
+    layout(matrix(1:3, 1, 3), widths = c(8.3, 8.3, 1.3))
+    par(cex = 1)
+    diform3d_plot_working(vertices, triangles, support_info, all_vertices, obs, obs_bg,
+                          response_info, elev, azim, show_support_plane, vmax)
+    diform3d_plot_physical(vertices, constraints, support_info, all_vertices, obs, obs_bg,
+                           response_info, elev, azim, show_support_plane, vmax)
+    diform3d_draw_colorbar(vmax, response_info$label)
+    grDevices::dev.off()
+  }
+}
+
+diform2d_theme <- theme_bw(base_size = 13) +
+  theme(panel.grid.minor = element_blank(), plot.title = element_text(face = "bold", size = 14),
+        axis.text = element_text(size = 11), axis.title = element_text(size = 13), plot.margin = margin(6, 14, 6, 6))
+
+#' Contour response on a grid of current speed and angle, as a long table.
+diform2d_surface <- function(diform_result, rp, c_grid, a_grid) {
+  z <- diform3d_surface_physical(diform3d_constraints(diform_result, rp), c_grid, a_grid)
+  data.table(Cspd = rep(c_grid, times = length(a_grid)), angle = rep(a_grid, each = length(c_grid)),
+             value = as.vector(z), rp = rp)
+}
+
+#' Top view of the physical space coloured by the response, with the cut bands and the maximum.
+diform2d_map <- function(s, cuts, pk, vmax, dc, da) {
+  s <- s[!is.na(value)]
+  cmax <- max(s$Cspd)
+  bands <- rbindlist(lapply(cuts, function(x) {
+    if (x$along == "angle") data.table(xmin = 0, xmax = 360, ymin = x$at - dc, ymax = x$at + dc,
+                                       x0 = 0, x1 = 360, y0 = x$at, y1 = x$at, lx = 350, ly = x$at, tag = x$tag)
+    else data.table(xmin = x$at - da, xmax = x$at + da, ymin = 0, ymax = cmax,
+                    x0 = x$at, x1 = x$at, y0 = 0, y1 = cmax, lx = x$at, ly = cmax - 0.25, tag = x$tag)
+  }))
+  ggplot(s, aes(angle, Cspd)) +
+    geom_raster(aes(fill = value), interpolate = TRUE) +
+    geom_contour(aes(z = value), colour = "white", linewidth = 0.3, alpha = 0.6, bins = 10) +
+    geom_rect(data = bands, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), inherit.aes = FALSE,
+              fill = "white", alpha = 0.3, colour = NA) +
+    geom_segment(data = bands, aes(x = x0, xend = x1, y = y0, yend = y1), inherit.aes = FALSE,
+                 colour = "grey15", linewidth = 0.35, linetype = "dashed", alpha = 0.8) +
+    geom_label(data = bands, aes(lx, ly, label = tag), inherit.aes = FALSE, size = 4.2, fontface = "bold",
+               colour = "grey15", fill = alpha("white", 0.75), linewidth = 0, label.padding = unit(0.1, "lines")) +
+    geom_point(data = pk, shape = 4, size = 4, stroke = 1.4, colour = "black") +
+    scale_fill_viridis_c(limits = c(0, vmax), guide = "none") +
+    scale_x_continuous(breaks = seq(0, 360, 45), expand = c(0, 0)) +
+    scale_y_continuous(expand = c(0, 0)) +
+    labs(title = "(c) Top view of the physical space", x = "Angular difference [°]", y = "Current speed [m s⁻¹]") +
+    diform2d_theme
+}
+
+#' Cut of every return-period contour at fixed current speed or fixed angle, over the observations in the band.
+diform2d_cut <- function(diform_result, data, response_info, cut, c_grid, a_grid, dc, da) {
+  rps <- diform_result$return_periods
+  y <- data[[diform_result$response]]
+  if (cut$along == "angle") {
+    sl <- rbindlist(lapply(rps, function(rp) diform2d_surface(diform_result, rp, cut$at, a_grid)))[, x := angle]
+    keep <- abs(data$Cspd - cut$at) < dc
+    ob <- data.table(x = data$angleDiff[keep], y = y[keep])
+    xs <- scale_x_continuous(breaks = seq(0, 360, 90), limits = c(0, 360), expand = c(0, 0))
+    lb <- labs(title = sprintf("%s Current speed = %.2f m s⁻¹", cut$tag, cut$at), x = "Angular difference [°]")
+  } else {
+    sl <- rbindlist(lapply(rps, function(rp) diform2d_surface(diform_result, rp, c_grid, cut$at)))[, x := Cspd]
+    d <- abs(data$angleDiff - cut$at)
+    keep <- pmin(d, 360 - d) < da
+    ob <- data.table(x = data$Cspd[keep], y = y[keep])
+    xs <- scale_x_continuous(limits = c(0, ceiling(max(c_grid))), expand = c(0, 0))
+    lb <- labs(title = sprintf("%s Angular difference = %.0f°", cut$tag, cut$at), x = "Current speed [m s⁻¹]")
+  }
+  ggplot() +
+    geom_point(data = ob, aes(x, y), colour = "grey60", size = 0.4, alpha = 0.25, shape = 16) +
+    geom_vline(xintercept = cut$mark, linetype = "dashed", linewidth = 0.4, colour = "grey30") +
+    geom_line(data = sl[!is.na(value)], aes(x, value, colour = factor(rp)), linewidth = 0.7) +
+    scale_colour_manual(values = setNames(viridisLite::viridis(length(rps), end = 0.9), rps), name = "Return period [yr]") +
+    xs + lb + labs(y = response_info$label) + diform2d_theme + theme(plot.title = element_text(size = 13))
+}
+
+#' Composite figure for every return period: 3D panels, top view of the physical space and cuts through the maximum.
+plot_diform_composite <- function(diform_result, data, response_info, out_dir, second_ridge = FALSE, dc = 0.1, da = 2.5) {
+  panel_dir <- tempfile("diform3d_")
+  dir.create(panel_dir)
+  on.exit(unlink(panel_dir, recursive = TRUE), add = TRUE)
+  plot_diform_3d_r(diform_result, data, response_info, panel_dir)
+  all_vertices <- do.call(rbind, lapply(diform_result$contours_3d, `[[`, "vertices_3d"))
+  vmax <- max(all_vertices[, 2]^2 + all_vertices[, 3]^2) * 1.03
+  c_grid <- seq(0, max(all_vertices[, 1]), by = 0.01)
+  a_grid <- seq(0, 360, by = 0.5)
+
+  for (rp in diform_result$return_periods) {
+    tag <- format(rp, trim = TRUE)
+    s <- diform2d_surface(diform_result, rp, c_grid, a_grid)
+    bt <- diform_result$contours_3d[[as.character(rp)]]$vertices_bt
+    i <- which.max(bt[[diform_result$response]])
+    pk <- data.table(Cspd = bt$Cspd[i], angle = bt$angleDiff[i])
+    cuts <- list(list(along = "angle", at = pk$Cspd, mark = pk$angle), list(along = "cspd", at = pk$angle, mark = pk$Cspd))
+    if (second_ridge) {
+      other <- s[!is.na(value) & (angle < 180) != (pk$angle < 180)]
+      r2 <- other[which.max(value)]
+      cuts[[1]]$mark <- c(pk$angle, r2$angle)
+      cuts[[3]] <- list(along = "cspd", at = r2$angle, mark = r2$Cspd)
+    }
+    for (k in seq_along(cuts)) cuts[[k]]$tag <- sprintf("(%s)", letters[k + 3])
+
+    img <- png::readPNG(file.path(panel_dir, sprintf("diform_3d_%syr.png", tag)))
+    h_top <- 12 * nrow(img) / ncol(img)
+    h_bottom <- 2.6 + 1.8 * length(cuts)
+    right <- wrap_plots(lapply(cuts, function(x) diform2d_cut(diform_result, data, response_info, x, c_grid, a_grid, dc, da)), ncol = 1)
+    bottom <- (diform2d_map(s, cuts, pk, vmax, dc, da) | right) + plot_layout(widths = c(1.9, 1), guides = "collect")
+    p <- wrap_plots(wrap_elements(full = grid::rasterGrob(img, interpolate = TRUE)), bottom, ncol = 1, heights = c(h_top, h_bottom))
+    ggsave(file.path(out_dir, sprintf("diform_composite_%syr.png", tag)), p, width = 12, height = h_top + h_bottom,
+           dpi = 250, device = ragg::agg_png)
   }
 }

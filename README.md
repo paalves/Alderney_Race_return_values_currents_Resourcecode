@@ -18,13 +18,13 @@ All paths are relative to the repository root, where the data file must be place
 | `site_description/` | `00_location_map.R` to `04_time_series.R` | Location map, distributions, directions and tides, density plots, severe storms, time series |
 | `stationary_EVA/` | `00_stationary_helpers.R` to `05_run_stationary_EVA.R` | Threshold selection, declustering sensitivity, stationary GPD fit and return levels |
 | `nonstationary_EVA/` | `01_select_evgam.R`, `02_run_evgam_analysis.R`, `03_evgam_plots.R` | Covariate-dependent ALD threshold, GAM–GPD model, block cross-validation, partial effects and QQ plots |
-| `contours/` | `00_diform_explanation.R` to `04_run_diform_3d.R`, `pot_decluster.cpp` | D-IFORM illustration in (Hs, Tp), three-dimensional contours and directional QQ diagnostics |
+| `contours/` | `00_diform_explanation.R` to `04_run_diform_3d.R`, `pot_decluster.cpp` | D-IFORM illustration in (Hs, Tp), three-dimensional contours with their top view and cuts through the maximum, and directional QQ diagnostics |
 
 Figures are written to `figures/`, fitted objects to `outputs/`.
 
 ## Requirements
 
-The code was run with R 4.5. Required packages: `data.table`, `dplyr`, `ggplot2`, `patchwork`, `cowplot`, `gridExtra`, `scales`, `viridis`, `viridisLite`, `ragg`, `sf`, `rnaturalearth`, `rnaturalearthdata`, `resourcecode`, `resourcecodedata`, `evd`, `extRemes`, `POT`, `evgam` and `Rcpp`. The declustering of the D-IFORM projections is written in C++ (`contours/pot_decluster.cpp`) and compiled by `Rcpp`, which requires a C++ compiler (Rtools on Windows).
+The code was run with R 4.5. Required packages: `data.table`, `dplyr`, `ggplot2`, `patchwork`, `cowplot`, `gridExtra`, `scales`, `viridis`, `viridisLite`, `ragg`, `png`, `sf`, `rnaturalearth`, `rnaturalearthdata`, `resourcecode`, `resourcecodedata`, `evd`, `extRemes`, `POT`, `evgam` and `Rcpp`. The declustering of the D-IFORM projections is written in C++ (`contours/pot_decluster.cpp`) and compiled by `Rcpp`, which requires a C++ compiler (Rtools on Windows).
 
 ## Reproducing the results
 
